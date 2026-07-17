@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "defaultEnabled": true,
+  "defaultMode": "loaded",
+  "maxCapturedPositionsPerAction": 4096,
+  "maxBlockWritesPerTick": 4096,
+  "maxQueuedBlockWrites": 262144,
+  "maxSpawnerClonesPerTick": 256,
+  "maxQueuedEntityClones": 32768,
+  "mirrorMonsterSpawnerSpawns": true,
+  "logQueueOverflows": true,
+  "logSkippedProtectedBlocks": false
+}

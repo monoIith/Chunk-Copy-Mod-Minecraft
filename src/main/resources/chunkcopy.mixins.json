@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "package": "dev.chunkcopy.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ExperienceOrbEntityMixin",
+    "MobSpawnerLogicMixin",
+    "ServerPlayerInteractionManagerMixin",
+    "ServerWorldMixin",
+    "SignBlockEntityMixin",
+    "SummonedEntityCriterionMixin",
+    "WorldMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
