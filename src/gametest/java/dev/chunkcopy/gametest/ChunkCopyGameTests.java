@@ -13,6 +13,8 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.DoorBlock;
+import net.minecraft.block.FenceGateBlock;
+import net.minecraft.block.TrapdoorBlock;
 import net.minecraft.block.enums.DoubleBlockHalf;
 import net.minecraft.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.block.entity.MobSpawnerBlockEntity;
@@ -51,6 +53,74 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class ChunkCopyGameTests {
+    @GameTest(maxTicks = 20, setupTicks = 20, skyAccess = true)
+    public void usingExistingFenceGateStaysLocal(TestContext context) {
+        BlockPos source = context.getAbsolutePos(new BlockPos(4, 28, 4));
+        BlockPos destination = source.add(16, 0, 0);
+        BlockState closedGate = Blocks.OAK_FENCE_GATE.getDefaultState()
+                .with(FenceGateBlock.OPEN, false)
+                .with(FenceGateBlock.POWERED, false);
+        int setupFlags = Block.FORCE_STATE_AND_SKIP_CALLBACKS_AND_DROPS | Block.NOTIFY_LISTENERS;
+        context.getWorld().setBlockState(source, closedGate, setupFlags);
+        context.getWorld().setBlockState(destination, Blocks.LAPIS_BLOCK.getDefaultState(), Block.NOTIFY_ALL);
+
+        ChunkCopyMod.service().setEnabled(context.getWorld(), true);
+        ChunkCopyMod.service().setMode(context.getWorld(), ReplicationMode.LOADED);
+        ServerPlayerEntity player = context.createMockCreativeServerPlayerInWorld();
+        player.refreshPositionAndAngles(Vec3d.ofCenter(source.add(2, 0, 0)), 90.0F, 0.0F);
+        player.setStackInHand(Hand.MAIN_HAND, ItemStack.EMPTY);
+
+        ActionResult result = useBlock(context, player, source);
+        context.assertTrue(result.isAccepted(), Text.literal("fence-gate use was not accepted"));
+
+        context.waitAndRun(3, () -> {
+            context.assertTrue(
+                    context.getWorld().getBlockState(source).get(FenceGateBlock.OPEN),
+                    Text.literal("source fence gate did not open")
+            );
+            context.assertEquals(
+                    Blocks.LAPIS_BLOCK,
+                    context.getWorld().getBlockState(destination).getBlock(),
+                    Text.literal("fence-gate interaction changed the destination slot")
+            );
+            context.complete();
+        });
+    }
+
+    @GameTest(maxTicks = 20, setupTicks = 20, skyAccess = true)
+    public void usingExistingTrapdoorStaysLocal(TestContext context) {
+        BlockPos source = context.getAbsolutePos(new BlockPos(3, 24, 3));
+        BlockPos destination = source.add(16, 0, 0);
+        BlockState closedTrapdoor = Blocks.OAK_TRAPDOOR.getDefaultState()
+                .with(TrapdoorBlock.OPEN, false)
+                .with(TrapdoorBlock.POWERED, false);
+        int setupFlags = Block.FORCE_STATE_AND_SKIP_CALLBACKS_AND_DROPS | Block.NOTIFY_LISTENERS;
+        context.getWorld().setBlockState(source, closedTrapdoor, setupFlags);
+        context.getWorld().setBlockState(destination, Blocks.EMERALD_BLOCK.getDefaultState(), Block.NOTIFY_ALL);
+
+        ChunkCopyMod.service().setEnabled(context.getWorld(), true);
+        ChunkCopyMod.service().setMode(context.getWorld(), ReplicationMode.LOADED);
+        ServerPlayerEntity player = context.createMockCreativeServerPlayerInWorld();
+        player.refreshPositionAndAngles(Vec3d.ofCenter(source.add(2, 0, 0)), 90.0F, 0.0F);
+        player.setStackInHand(Hand.MAIN_HAND, ItemStack.EMPTY);
+
+        ActionResult result = useBlock(context, player, source);
+        context.assertTrue(result.isAccepted(), Text.literal("trapdoor use was not accepted"));
+
+        context.waitAndRun(3, () -> {
+            context.assertTrue(
+                    context.getWorld().getBlockState(source).get(TrapdoorBlock.OPEN),
+                    Text.literal("source trapdoor did not open")
+            );
+            context.assertEquals(
+                    Blocks.EMERALD_BLOCK,
+                    context.getWorld().getBlockState(destination).getBlock(),
+                    Text.literal("trapdoor interaction changed the destination slot")
+            );
+            context.complete();
+        });
+    }
+
     @GameTest(maxTicks = 20, setupTicks = 20, skyAccess = true)
     public void usingEitherHalfOfExistingDoorStaysLocal(TestContext context) {
         // Keep this interaction above the shared test-structure plane. Several causal-copy tests
@@ -445,16 +515,33 @@ public final class ChunkCopyGameTests {
 
     @GameTest(maxTicks = 45, setupTicks = 15, skyAccess = true)
     public void creeperExplosionDamageRemainsLocal(TestContext context) {
-        BlockPos seed = context.getAbsolutePos(new BlockPos(4, 5, 4));
+        BlockPos seed = context.getAbsolutePos(new BlockPos(4, 36, 4));
         BlockPos center = new BlockPos(
                 (Math.floorDiv(seed.getX(), 16) << 4) + 8,
                 seed.getY(),
                 (Math.floorDiv(seed.getZ(), 16) << 4) + 8
         );
-        BlockPos sourceBlock = center.east();
-        BlockPos destinationBlock = sourceBlock.add(16, 0, 0);
-        context.getWorld().setBlockState(sourceBlock, Blocks.WHITE_WOOL.getDefaultState(), Block.NOTIFY_ALL);
-        context.getWorld().setBlockState(destinationBlock, Blocks.WHITE_WOOL.getDefaultState(), Block.NOTIFY_ALL);
+        List<BlockPos> sourceBlocks = List.of(
+                center.north(),
+                center.south(),
+                center.east(),
+                center.west(),
+                center.up(),
+                center.down()
+        );
+        List<BlockPos> destinationBlocks = sourceBlocks.stream()
+                .map(pos -> pos.add(16, 0, 0))
+                .toList();
+        sourceBlocks.forEach(pos -> context.getWorld().setBlockState(
+                pos,
+                Blocks.GLASS.getDefaultState(),
+                Block.NOTIFY_ALL
+        ));
+        destinationBlocks.forEach(pos -> context.getWorld().setBlockState(
+                pos,
+                Blocks.GLASS.getDefaultState(),
+                Block.NOTIFY_ALL
+        ));
         CreeperEntity creeper = Objects.requireNonNull(
                 EntityType.CREEPER.create(context.getWorld(), SpawnReason.TRIGGERED)
         );
@@ -467,13 +554,12 @@ public final class ChunkCopyGameTests {
 
         context.waitAndRun(34, () -> {
             context.assertTrue(creeper.isRemoved(), Text.literal("creeper did not explode"));
-            context.assertFalse(
-                    context.getWorld().getBlockState(sourceBlock).isOf(Blocks.WHITE_WOOL),
-                    Text.literal("source creeper explosion did not damage its adjacent block")
+            context.assertTrue(
+                    sourceBlocks.stream().anyMatch(pos -> !context.getWorld().getBlockState(pos).isOf(Blocks.GLASS)),
+                    Text.literal("source creeper explosion did not damage any adjacent block")
             );
-            context.assertEquals(
-                    Blocks.WHITE_WOOL,
-                    context.getWorld().getBlockState(destinationBlock).getBlock(),
+            context.assertTrue(
+                    destinationBlocks.stream().allMatch(pos -> context.getWorld().getBlockState(pos).isOf(Blocks.GLASS)),
                     Text.literal("creeper explosion damage was mirrored")
             );
             context.complete();
