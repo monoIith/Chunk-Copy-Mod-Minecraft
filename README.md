@@ -7,6 +7,7 @@ Chunk Copy is a server-authoritative Fabric mod for Minecraft Java 1.21.10. It m
 | Source event | Result |
 | --- | --- |
 | Place, break, or transform a block | The root block mutation is copied to each eligible chunk. |
+| Open or close an existing door | The door state change remains local; neither half is copied. |
 | Creeper explosion | The explosion and its damage stay local. |
 | Ignite TNT with flint and steel | The copied TNT blocks are removed, but only the source creates primed TNT. |
 | Place a redstone torch beside TNT | The torch is copied, so vanilla redstone independently primes TNT in each destination. |

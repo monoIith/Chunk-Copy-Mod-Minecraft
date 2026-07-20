@@ -92,7 +92,8 @@ public final class PlayerActionContext {
         }
 
         boolean root = capture.mutationDepth.enter();
-        return new MutationToken(capture, root, pos, state, flags, maxUpdateDepth);
+        BlockState previousState = world.getBlockState(pos);
+        return new MutationToken(capture, root, pos, previousState, state, flags, maxUpdateDepth);
     }
 
     private static final class Capture {
@@ -115,11 +116,15 @@ public final class PlayerActionContext {
         private void successfulMutation(
                 boolean root,
                 BlockPos pos,
+                BlockState previousState,
                 BlockState state,
                 int flags,
                 int maxUpdateDepth
         ) {
             if (oversized) {
+                return;
+            }
+            if (!MutationCapturePolicy.shouldCapture(previousState, state)) {
                 return;
             }
 
@@ -162,6 +167,7 @@ public final class PlayerActionContext {
         private final Capture capture;
         private final boolean root;
         private final BlockPos pos;
+        private final BlockState previousState;
         private final BlockState state;
         private final int flags;
         private final int maxUpdateDepth;
@@ -172,6 +178,7 @@ public final class PlayerActionContext {
             capture = null;
             root = false;
             pos = null;
+            previousState = null;
             state = null;
             flags = 0;
             maxUpdateDepth = 0;
@@ -181,6 +188,7 @@ public final class PlayerActionContext {
                 Capture capture,
                 boolean root,
                 BlockPos pos,
+                BlockState previousState,
                 BlockState state,
                 int flags,
                 int maxUpdateDepth
@@ -188,6 +196,7 @@ public final class PlayerActionContext {
             this.capture = capture;
             this.root = root;
             this.pos = pos;
+            this.previousState = previousState;
             this.state = state;
             this.flags = flags;
             this.maxUpdateDepth = maxUpdateDepth;
@@ -196,7 +205,7 @@ public final class PlayerActionContext {
         public void complete(boolean success) {
             if (capture != null && success && !completed) {
                 completed = true;
-                capture.successfulMutation(root, pos, state, flags, maxUpdateDepth);
+                capture.successfulMutation(root, pos, previousState, state, flags, maxUpdateDepth);
             }
         }
 

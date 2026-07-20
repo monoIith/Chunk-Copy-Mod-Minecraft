@@ -10,7 +10,10 @@ import dev.chunkcopy.replication.SpawnerEntitySnapshot;
 import dev.chunkcopy.replication.SanitizedBlockEntityData;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.DoorBlock;
+import net.minecraft.block.enums.DoubleBlockHalf;
 import net.minecraft.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.block.entity.MobSpawnerBlockEntity;
 import net.minecraft.block.spawner.MobSpawnerEntry;
@@ -48,6 +51,45 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class ChunkCopyGameTests {
+    @GameTest(maxTicks = 20, setupTicks = 20, skyAccess = true)
+    public void usingEitherHalfOfExistingDoorStaysLocal(TestContext context) {
+        // Keep this interaction above the shared test-structure plane. Several causal-copy tests
+        // intentionally address neighboring chunks and therefore cannot share their usual Y slot.
+        BlockPos topClickedDoor = context.getAbsolutePos(new BlockPos(2, 20, 2));
+        BlockPos bottomClickedDoor = context.getAbsolutePos(new BlockPos(5, 20, 2));
+        BlockPos topDestination = topClickedDoor.add(16, 0, 0);
+        BlockPos bottomDestination = bottomClickedDoor.add(16, 0, 0);
+        placeClosedOakDoor(context.getWorld(), topClickedDoor);
+        placeClosedOakDoor(context.getWorld(), bottomClickedDoor);
+        fillDoorSlots(context.getWorld(), topDestination, Blocks.GOLD_BLOCK.getDefaultState());
+        fillDoorSlots(context.getWorld(), bottomDestination, Blocks.DIAMOND_BLOCK.getDefaultState());
+
+        ChunkCopyMod.service().setEnabled(context.getWorld(), true);
+        ChunkCopyMod.service().setMode(context.getWorld(), ReplicationMode.LOADED);
+        ServerPlayerEntity player = context.createMockCreativeServerPlayerInWorld();
+        player.refreshPositionAndAngles(Vec3d.ofCenter(topClickedDoor.add(2, 0, 0)), 90.0F, 0.0F);
+        player.setStackInHand(Hand.MAIN_HAND, ItemStack.EMPTY);
+
+        ActionResult topResult = useBlock(context, player, topClickedDoor.up());
+        ActionResult bottomResult = useBlock(context, player, bottomClickedDoor);
+        context.assertTrue(topResult.isAccepted(), Text.literal("top door-half use was not accepted"));
+        context.assertTrue(bottomResult.isAccepted(), Text.literal("bottom door-half use was not accepted"));
+
+        context.waitAndRun(3, () -> {
+            context.assertTrue(
+                    context.getWorld().getBlockState(topClickedDoor.up()).get(DoorBlock.OPEN),
+                    Text.literal("source door did not open when its top half was used")
+            );
+            context.assertTrue(
+                    context.getWorld().getBlockState(bottomClickedDoor).get(DoorBlock.OPEN),
+                    Text.literal("source door did not open when its bottom half was used")
+            );
+            assertDoorSlots(context, topDestination, Blocks.GOLD_BLOCK);
+            assertDoorSlots(context, bottomDestination, Blocks.DIAMOND_BLOCK);
+            context.complete();
+        });
+    }
+
     @GameTest(maxTicks = 40, setupTicks = 60, skyAccess = true)
     public void persistentModeMaterializesStateIntoLaterLoadedChunk(TestContext context) {
         BlockPos templateOrigin = context.getAbsolutePos(BlockPos.ORIGIN);
@@ -616,5 +658,48 @@ public final class ChunkCopyGameTests {
         world.setBlockState(center.up(), Blocks.IRON_BLOCK.getDefaultState(), Block.NOTIFY_ALL);
         world.setBlockState(center.up().west(), Blocks.IRON_BLOCK.getDefaultState(), Block.NOTIFY_ALL);
         world.setBlockState(center.up().east(), Blocks.IRON_BLOCK.getDefaultState(), Block.NOTIFY_ALL);
+    }
+
+    private static void placeClosedOakDoor(ServerWorld world, BlockPos lowerPos) {
+        world.setBlockState(lowerPos.down(), Blocks.STONE.getDefaultState(), Block.NOTIFY_ALL);
+        BlockState lower = Blocks.OAK_DOOR.getDefaultState()
+                .with(DoorBlock.HALF, DoubleBlockHalf.LOWER)
+                .with(DoorBlock.OPEN, false)
+                .with(DoorBlock.POWERED, false);
+        int setupFlags = Block.FORCE_STATE_AND_SKIP_CALLBACKS_AND_DROPS | Block.NOTIFY_LISTENERS;
+        world.setBlockState(lowerPos, lower, setupFlags);
+        world.setBlockState(lowerPos.up(), lower.with(DoorBlock.HALF, DoubleBlockHalf.UPPER), setupFlags);
+    }
+
+    private static void fillDoorSlots(ServerWorld world, BlockPos lowerPos, BlockState state) {
+        world.setBlockState(lowerPos, state, Block.NOTIFY_ALL);
+        world.setBlockState(lowerPos.up(), state, Block.NOTIFY_ALL);
+    }
+
+    private static ActionResult useBlock(
+            TestContext context,
+            ServerPlayerEntity player,
+            BlockPos pos
+    ) {
+        return player.interactionManager.interactBlock(
+                player,
+                context.getWorld(),
+                ItemStack.EMPTY,
+                Hand.MAIN_HAND,
+                new BlockHitResult(Vec3d.ofCenter(pos), Direction.NORTH, pos, false)
+        );
+    }
+
+    private static void assertDoorSlots(TestContext context, BlockPos lowerPos, Block expected) {
+        context.assertEquals(
+                expected,
+                context.getWorld().getBlockState(lowerPos).getBlock(),
+                Text.literal("door interaction changed the destination lower slot")
+        );
+        context.assertEquals(
+                expected,
+                context.getWorld().getBlockState(lowerPos.up()).getBlock(),
+                Text.literal("door interaction changed the destination upper slot")
+        );
     }
 }
